@@ -146,7 +146,7 @@
     <p>Marca los cursos aprobados. Los cursos bloqueados requieren aprobar los prerrequisitos.</p>
   </header>
   <div class="years" id="years-container">
-    <!-- Columnas se generan con JS -->
+    <!-- Columnas generadas con JS -->
   </div>
   <div id="credits-summary">
     Créditos aprobados: <span id="credits-earned">0</span> / 179
@@ -155,10 +155,6 @@
 
 <script>
 (() => {
-  // Datos materias organizados por año, semestre, materias.
-  // Cada materia tiene: código, nombre, créditos (0 si no tiene), abre (lista de códigos que desbloquea)
-  // Nota: materias sin créditos no cuentan para la suma.
-  
   const totalCredits = 179;
 
   const malla = [
@@ -316,15 +312,8 @@
     }
   ];
 
-  // Para buscar materias por código y sus prerequisitos
-  // La lógica: una materia está desbloqueada si TODOS sus prerequisitos están aprobados.
-  // Como en el input no hay prerequisitos directos, sino materias que "abren" otras,
-  // debemos invertir esa lógica: para cada materia, saber quién la desbloquea (prerrequisitos).
-  // Por eso generamos un mapa de prerequisitos al inicio.
-
-  // Crear mapa: curso -> lista de cursos que lo desbloquean (los prerequisitos)
+  // Crear mapa de prerrequisitos (materias que desbloquean cada materia)
   const prereqMap = {};
-  // Inicializa todos con array vacío
   for (const year of malla) {
     for (const sem of year.semesters) {
       for (const c of sem.courses) {
@@ -332,7 +321,6 @@
       }
     }
   }
-  // Rellena la info: si X abre Y, entonces Y tiene prerequisito X
   for (const year of malla) {
     for (const sem of year.semesters) {
       for (const c of sem.courses) {
@@ -345,10 +333,8 @@
     }
   }
 
-  // Estado: materias aprobadas (codes)
   let approved = new Set();
 
-  // Recuperar de localStorage
   function loadProgress() {
     try {
       const saved = localStorage.getItem("mallaAprobados");
@@ -360,24 +346,19 @@
       approved = new Set();
     }
   }
-  // Guardar progreso
+
   function saveProgress() {
     localStorage.setItem("mallaAprobados", JSON.stringify(Array.from(approved)));
   }
 
-  // Saber si una materia está desbloqueada: todos sus prerequisitos aprobados
   function isUnlocked(code) {
     const prereqs = prereqMap[code] || [];
-    // Para materias sin prereqs, prereqs = []
-    // Si todos prereqs aprobados, retorna true
     return prereqs.every(pr => approved.has(pr));
   }
 
-  // Actualizar créditos acumulados
   function updateCredits() {
     let sum = 0;
     for (const code of approved) {
-      // Buscar créditos
       for (const year of malla) {
         for (const sem of year.semesters) {
           for (const c of sem.courses) {
@@ -391,13 +372,68 @@
     document.getElementById("credits-earned").textContent = sum;
   }
 
-  // Crear elementos DOM de materias
   function createCourseElement(course) {
     const div = document.createElement("div");
     div.className = "course";
     div.textContent = course.code + " " + course.name;
-    // No mostrar créditos (oculto según pedido)
-    // data para tooltip si está bloqueada
     div.dataset.code = course.code;
 
-    // Comprobar estado
+    if (approved.has(course.code)) {
+      div.classList.add("approved");
+    } else if (!isUnlocked(course.code)) {
+      div.classList.add("locked");
+
+      const missing = prereqMap[course.code].filter(pr => !approved.has(pr));
+      if (missing.length > 0) {
+        div.dataset.tooltip = "Falta aprobar: " + missing.join(", ");
+      } else {
+        div.dataset.tooltip = "Bloqueado";
+      }
+    }
+
+    div.addEventListener("click", () => {
+      if (div.classList.contains("locked")) return;
+      if (div.classList.contains("approved")) {
+        approved.delete(course.code);
+      } else {
+        approved.add(course.code);
+      }
+      saveProgress();
+      renderMalla();
+    });
+
+    return div;
+  }
+
+  function renderMalla() {
+    const container = document.getElementById("years-container");
+    container.innerHTML = "";
+
+    for (const year of malla) {
+      const yearCol = document.createElement("div");
+      yearCol.className = "year-column";
+
+      const yTitle = document.createElement("div");
+      yTitle.className = "year-title";
+      yTitle.textContent = year.yearName;
+      yearCol.appendChild(yTitle);
+
+      for (const sem of year.semesters) {
+        const semDiv = document.createElement("div");
+        semDiv.className = "semester";
+
+        const semTitle = document.createElement("div");
+        semTitle.className = "semester-title";
+        semTitle.textContent = sem.semName;
+        semDiv.appendChild(semTitle);
+
+        const courseList = document.createElement("div");
+        courseList.className = "course-list";
+
+        for (const course of sem.courses) {
+          const courseEl = createCourseElement(course);
+          courseList.appendChild(courseEl);
+        }
+
+        semDiv.appendChild(courseList);
+        yearCol.appendChild(semDiv
